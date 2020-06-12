@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+  <script src="face-api.js"></script>
+</head>
+<body>
+  <style>
+  .canvas {
+    position: absolute;
+	width: 640px;
+    height: 480px;
+    top: 0;
+    left: 0;
+    z-index: 10;
+    background-color:rgba(128,128,128,0.5);
+  }
+  </style>
+  
+  <div style="position: relative" class="margin">
+    <video onloadedmetadata="onPlay(this)" id="inputVideo" autoplay muted playsinline></video>
+    <canvas class="canvas" id="overlay" />
+  </div>
+
+  <script>
+    // let faceDetector = 'ssd_mobilenetv1'
+	let faceDetector = 'tiny_face_detector'
+	
+    let forwardTimes = []
+    
+	$(document).ready(function() {
+      run()
+    })
+		
+	async function run() {
+	
+		
+		// load the models
+		// await faceapi.loadMtcnnModel('/weights')
+		if (faceDetector === 'ssd_mobilenetv1') {
+			await faceapi.nets.ssdMobilenetv1.loadFromUri('/weights')
+		}
+		else if (faceDetector === 'tiny_face_detector') {
+			await faceapi.nets.tinyFaceDetector.loadFromUri('/weights')
+		}
+		
+		// try to access users webcam and stream the images
+		// to the video element
+		const videoEl = document.getElementById('inputVideo')
+		navigator.getUserMedia(
+			{ video: {} },
+			stream => videoEl.srcObject = stream,
+			err => console.error(err)
+		)
+	}
+	
+	function faceDetectorOptions() {
+      if (faceDetector === 'ssd_mobilenetv1') {
+	    // ssd_mobilenetv1 options
+		let minConfidence = 0.5
+        return new faceapi.SsdMobilenetv1Options({ minConfidence })
+	  }
+	  else if (faceDetector === 'tiny_face_detector') {
+	    // tiny_face_detector options
+		let inputSize = 512
+		let scoreThreshold = 0.5
+        return new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold })
+	  }
+    }
+	
+	function updateTimeStats(timeInMs) {
+      forwardTimes = [timeInMs].concat(forwardTimes).slice(0, 30)
+      const avgTimeInMs = forwardTimes.reduce((total, t) => total + t) / forwardTimes.length
+      $('#time').val(`${Math.round(avgTimeInMs)} ms`)
+      $('#fps').val(`${faceapi.utils.round(1000 / avgTimeInMs)}`)
+    }
+	
+	async function onPlay() {
+	    // const mtcnnForwardParams = {
+        //   // number of scaled versions of the input image passed through the CNN
+        //   // of the first stage, lower numbers will result in lower inference time,
+        //   // but will also be less accurate
+        //   maxNumScales: 10,
+        //   // scale factor used to calculate the scale steps of the image
+        //   // pyramid used in stage 1
+        //   scaleFactor: 0.709,
+        //   // the score threshold values used to filter the bounding
+        //   // boxes of stage 1, 2 and 3
+        //   scoreThresholds: [0.6, 0.7, 0.7],
+        //   // mininum face size to expect, the higher the faster processing will be,
+        //   // but smaller faces won't be detected
+        //   minFaceSize: 20
+        // }
+		// 
+		// const mtcnnResults = await faceapi.mtcnn(document.getElementById('inputVideo'), mtcnnForwardParams)
+		// faceapi.draw.drawDetections('overlay', mtcnnResults.map(res => res.faceDetection), { withScore: false })
+		// faceapi.draw.drawLandmarks('overlay', mtcnnResults.map(res => res.faceLandmarks), { lineWidth: 4, color: 'red' })
+		
+		const videoEl = document.getElementById('inputVideo')
+		
+		if(videoEl.paused || videoEl.ended)
+          return setTimeout(() => onPlay())
+
+		const options = faceDetectorOptions()
+
+        const ts = Date.now()
+		
+		const detections = await faceapi.detectSingleFace(videoEl, options)
+		// const detections = await faceapi.detectAllFaces(videoEl, options)
+		
+		updateTimeStats(Date.now() - ts)
+		
+		if (detections) {
+		  const canvas = $('#overlay').get(0)
+		  
+		  // resize the detected boxes in case your displayed image has a different size than the original
+		  const dims = faceapi.matchDimensions(canvas, videoEl, true)
+		  const resizedDetections = faceapi.resizeResults(detections, dims)
+		  
+		  // draw detections into the canvas
+		  faceapi.draw.drawDetections(canvas, resizedDetections)
+		}
+		
+		setTimeout(() => onPlay())
+	}
+	
+    function updateResults() {}
+
+    
+  </script>
+</body>
+</html>
